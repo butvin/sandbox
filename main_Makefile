@@ -1,0 +1,153 @@
+
+COMPOSE=docker-compose
+
+PROJECT_DIR=/var/www/html/pdlprofit.com
+REPOSITORY_DIR=/var/www/html
+
+ifndef APP_ENV
+	include .env
+	ifneq ("$(wildcard .env.local)","")
+		include .env.local
+	endif
+endif
+
+DATABASE=mariadb
+PHP=pdl.php
+php_container=pdl.php
+php_container_name=pdl.php
+database_container=mariadb
+database_container_name=mariadb
+
+MYSQL_ROOT_PASSWORD=sdEd-Fds4-DneR-Q3sx
+MYSQL_DATABASE=pdlprofit
+MYSQL_USER=root
+
+_:
+	docker compose down --remove-orphans
+	docker compose build --no-cache
+	docker compose up -d --force-recreate
+	docker compose ps
+	docker exec -it $(php_container_name) bash -c 'cd /var/www/html/pdlprofit.com && composer install --ignore-platform-reqs --no-interaction'
+	docker --log-level debug exec -it $(database_container_name) mysql -vvv --host=localhost --user=$(MYSQL_USER) --password=$(MYSQL_ROOT_PASSWORD) --execute='SHOW DATABASES;'
+	docker --log-level debug exec -it $(database_container_name) mysql -vvv --host=localhost --user=$(MYSQL_USER) --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE); CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci'
+	docker --log-level debug exec -it $(database_container_name) mysql -vvv --host=localhost --user=$(MYSQL_USER) --password=$(MYSQL_ROOT_PASSWORD) --execute='SHOW DATABASES;'
+	docker --log-level debug exec -it $(database_container_name) mysql -vvv --host=localhost --user=$(MYSQL_USER) --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'
+	docker --log-level debug exec -it $(database_container_name) bash -c "mysql -vvv --host=localhost --user=$(MYSQL_USER) --password=$(MYSQL_ROOT_PASSWORD) $(MYSQL_DATABASE) < /docker-entrypoint-initdb.d/2.sql";
+
+
+
+build: \
+	fresh \
+	up \
+	composer \
+	database-crete-schema \
+	database-import-data \
+	elastic \
+	phinx-status \
+	phinx-migrate \
+	ps \
+	phinx-status;
+
+
+clean:
+	docker exec -it $(PHP) rm -rf $(PROJECT_DIR)/vendor/
+	docker exec -it $(DATABASE) mysql -vvv --host=localhost --user=root --port=3306 --password=$(MYSQL_ROOT_PASSWORD) --execute='show databases'
+	#docker exec -it $(DATABASE) mysql -vvv --host=localhost --user=root --port=3306 --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE)'
+	#$(COMPOSE) down -v --rmi all --remove-orphans
+
+
+
+#docker compose up -d --remove-orphans
+
+fresh:
+	$(COMPOSE) down --remove-orphans
+	$(COMPOSE) build --no-cache
+	$(COMPOSE) up --force-recreate
+
+
+#--no-interaction --no-suggest --no-progress --prefer-dist  --no-plugins  --no-scripts
+composer:
+	docker exec -it $(php_container) bash -c "rm -rf /var/www/html/pdlprofit.com/vendor/"
+	docker exec -it $(php_container) bash -c "cd /var/www/html/pdlprofit.com && composer install --ignore-platform-reqs --no-interaction"
+	docker exec -it $(php_container) bash -c "cd /var/www/html/pdlprofit.com && composer clear-cache --no-interaction"
+
+database-crete-schema:
+	docker exec -it $(database_container) mysql -vvv --host=localhost --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE); CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'
+
+migrate:
+	docker exec -it $(php_container) bash -c "cd /var/www/html/pdlprofit.com && php vendor/bin/phinx migrate"
+
+up:
+	$(COMPOSE) up -d
+ps:
+	$(COMPOSE) ps
+stop:
+	$(COMPOSE) stop
+start:
+	$(COMPOSE) start
+down:
+	$(COMPOSE) down 
+top:
+	$(COMPOSE) top
+kill:
+	$(COMPOSE) kill
+logs:
+	$(COMPOSE) logs -f --tail all
+rm:
+	$(COMPOSE) rm -f
+
+php:
+	$(COMPOSE) exec -it 'php' bash
+
+database:
+	$(COMPOSE)  exec -it 'mariadb' bash
+
+
+
+database-cli:
+	docker exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) $(MYSQL_DATABASE)
+
+test:
+	$(COMPOSE) exec -it php bash -c pwd
+#database-drop-schema:
+#	docker exec -it $(database_container) bash -c \
+#		"mysql -vvv --host localhost --user=root \
+#			--password=$(MYSQL_ROOT_PASSWORD) \
+#			--execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);' "
+
+#database-create-empty-structure:
+#	docker exec -it $(database_container) bash -c \
+#		"mysql -vvv --host localhost --user=root \
+#			--password=$(MYSQL_ROOT_PASSWORD) \
+#			--execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'"
+fix:
+	docker --log-level debug exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'
+
+status:
+	docker --log-level debug exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='SHOW DATABASES;'
+
+#
+#fix-gen:
+#	docker exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'
+
+database-import-data:
+	docker --log-level debug exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='SHOW DATABASES;'
+	docker --log-level debug exec -it $(database_container) mysql -vvv --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'
+	docker --log-level debug exec -it $(database_container) bash -c \
+		"mysql -vv --host=localhost --user=root \
+			--password=$(MYSQL_ROOT_PASSWORD) \
+				$(MYSQL_DATABASE) < /docker-entrypoint-initdb.d/2.sql";
+
+
+elastic: 	
+	docker exec -it $(php_container) bash -c "php /var/www/html/pdlprofit.com/db/elasticmap/map.php Y"
+	docker exec -it $(php_container) bash -c "php /var/www/html/loadPostbacksElastic.php"
+	docker exec -it $(php_container) bash -c "php /var/www/html/loadClicksToElastic.php"
+
+phinx-status:
+	docker exec -it $(php_container) bash -c "cd /var/www/html/pdlprofit.com && php vendor/bin/phinx status"
+phinx-migrate:
+	docker exec -it $(php_container) bash -c "cd /var/www/html/pdlprofit.com && php vendor/bin/phinx migrate"
+
+	##docker exec -it $(database_container) bash -c "mysql -vvv --host localhost --port=3306 --user=root --password=$(MYSQL_ROOT_PASSWORD) --execute='DROP SCHEMA IF EXISTS $(MYSQL_DATABASE);CREATE SCHEMA IF NOT EXISTS $(MYSQL_DATABASE) COLLATE utf8mb4_unicode_ci;'"
+	
